@@ -1,6 +1,7 @@
 ﻿
 import { Router } from "express";
 import { pool } from "../db/pool.js";
+import { requireAuth } from "../middleware/requireAuth.js";
 
 export const postRouter = Router();
 
@@ -93,16 +94,8 @@ postRouter.get("/:id", async (req, res) => {
 });
 
 // Создание публикации
-postRouter.post("/", async (req, res) => {
+postRouter.post("/", requireAuth, async (req, res) => {
   try {
-    const user = req.session.user as any;
-
-    if (!user?.id) {
-      return res.status(401).json({
-        message: "unauthorized"
-      });
-    }
-
     const { title, content } = req.body;
 
     if (typeof title !== "string" || typeof content !== "string") {
@@ -125,13 +118,7 @@ postRouter.post("/", async (req, res) => {
       });
     }
 
-    const targetUserId = parsePositiveInt(user.id);
-
-    if (!targetUserId) {
-      return res.status(400).json({
-        message: "invalid user id"
-      });
-    }
+    const targetUserId = req.session.user!.id;
 
     const [result]: any = await pool.execute(
       `INSERT INTO posts(user_id, title, content)
@@ -152,7 +139,7 @@ postRouter.post("/", async (req, res) => {
 // Обновление публикации
 postRouter.put("/:id", async (req, res) => {
   try {
-    const user = req.session.user as any;
+    const user = req.session.user;
 
     if (!user?.id) {
       return res.status(401).json({
@@ -190,19 +177,11 @@ postRouter.put("/:id", async (req, res) => {
       });
     }
 
-    const userId = parsePositiveInt(user.id);
-
-    if (!userId) {
-      return res.status(400).json({
-        message: "invalid user id"
-      });
-    }
-
     const [result]: any = await pool.execute(
       `UPDATE posts
        SET title = ?, content = ?
        WHERE id = ? AND user_id = ?`,
-      [trimmedTitle, content, postId, userId]
+      [trimmedTitle, content, postId, user.id]
     );
 
     if (result.affectedRows === 0) {
@@ -223,7 +202,7 @@ postRouter.put("/:id", async (req, res) => {
 // Удаление публикации
 postRouter.delete("/:id", async (req, res) => {
   try {
-    const user = req.session.user as any;
+    const user = req.session.user;
 
     if (!user?.id) {
       return res.status(401).json({
@@ -239,18 +218,10 @@ postRouter.delete("/:id", async (req, res) => {
       });
     }
 
-    const userId = parsePositiveInt(user.id);
-
-    if (!userId) {
-      return res.status(400).json({
-        message: "invalid user id"
-      });
-    }
-
     const [result]: any = await pool.execute(
       `DELETE FROM posts
        WHERE id = ? AND user_id = ?`,
-      [postId, userId]
+      [postId, user.id]
     );
 
     if (result.affectedRows === 0) {
