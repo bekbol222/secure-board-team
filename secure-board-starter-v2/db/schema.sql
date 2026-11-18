@@ -46,9 +46,9 @@ CREATE TABLE attachments (
 
 INSERT INTO users(email,password_hash,name,role)
 VALUES
-('admin@school.test', MD5('admin1234'), '관리자', 'ADMIN'),
-('student1@school.test', MD5('student1234'), '학생1', 'USER'),
-('student2@school.test', MD5('student1234'), '학생2', 'USER');
+('admin@school.test', '$2b$12$X3w7k48fH/q.n0Hxg9yQKOLbuPA65XomYpkOhfk3Wpm/IL9WVcyr6', '관리자', 'ADMIN'),
+('student1@school.test', '$2b$12$ZRMTQYhe8je0XN48NLr5.urEuBJMU2AvVZmEmlw1F7g/.pfNjuIfq', '학생1', 'USER'),
+('student2@school.test', '$2b$12$ZRMTQYhe8je0XN48NLr5.urEuBJMU2AvVZmEmlw1F7g/.pfNjuIfq', '학생2', 'USER');
 
 INSERT INTO posts(user_id,title,content)
 VALUES
