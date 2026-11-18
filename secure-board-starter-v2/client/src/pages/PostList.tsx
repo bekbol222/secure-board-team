@@ -1,14 +1,22 @@
-import { useEffect, useState } from "react";
+
+import { Fragment, useEffect, useState } from "react";
 import { api } from "../api";
 import { formatDate } from "../format";
 import type { Post } from "../types";
 import type { Go } from "../App";
 
-function highlight(text: string, keyword: string): string {
-  return text.split(keyword).join(`<mark>${keyword}</mark>`);
+function renderHighlighted(text: string, keyword: string) {
+  if (!keyword) return text;
+  const parts = text.split(keyword);
+  return parts.map((part, index) => (
+    <Fragment key={index}>
+      {part}
+      {index < parts.length - 1 && <mark>{keyword}</mark>}
+    </Fragment>
+  ));
 }
 
-export default function PostList({go}: {go: Go}) {
+export default function PostList({ go }: { go: Go }) {
   const initial = new URLSearchParams(window.location.search).get("q") ?? "";
   const [q, setQ] = useState(initial);
   const [searched, setSearched] = useState("");
@@ -20,7 +28,9 @@ export default function PostList({go}: {go: Go}) {
       setPosts(await api<Post[]>(`/api/posts?q=${encodeURIComponent(keyword)}`));
       setSearched(keyword);
       setError("");
-      const url = keyword ? `?q=${encodeURIComponent(keyword)}` : window.location.pathname;
+      const url = keyword
+        ? `?q=${encodeURIComponent(keyword)}`
+        : window.location.pathname;
       window.history.replaceState(null, "", url);
     } catch (e) {
       setError((e as Error).message);
@@ -44,17 +54,20 @@ export default function PostList({go}: {go: Go}) {
 
       <table className="posts">
         <thead>
-          <tr><th className="num">번호</th><th>제목</th><th>작성자</th><th className="date">작성일</th></tr>
+          <tr>
+            <th className="num">번호</th>
+            <th>제목</th>
+            <th>작성자</th>
+            <th className="date">작성일</th>
+          </tr>
         </thead>
         <tbody>
           {posts.map(p => (
             <tr key={p.id}>
               <td className="num">{p.id}</td>
               <td>
-                <button className="title-link" onClick={() => go({name: "detail", id: p.id})}>
-                  {searched
-                    ? <span dangerouslySetInnerHTML={{__html: highlight(p.title, searched)}} />
-                    : p.title}
+                <button className="title-link" onClick={() => go({ name: "detail", id: p.id })}>
+                  {searched ? renderHighlighted(p.title, searched) : p.title}
                 </button>
               </td>
               <td>{p.authorName}</td>
@@ -63,6 +76,7 @@ export default function PostList({go}: {go: Go}) {
           ))}
         </tbody>
       </table>
+
       {posts.length === 0 && !error && <p className="empty">게시글이 없습니다.</p>}
     </section>
   );
