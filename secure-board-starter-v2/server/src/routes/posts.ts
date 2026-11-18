@@ -118,12 +118,13 @@ postRouter.post("/", requireAuth, async (req, res) => {
       });
     }
 
-    const targetUserId = req.session.user!.id;
+    // 작성자는 요청 body가 아닌 로그인 세션에서 가져옴
+    const userId = req.session.user!.id;
 
     const [result]: any = await pool.execute(
       `INSERT INTO posts(user_id, title, content)
        VALUES (?, ?, ?)`,
-      [targetUserId, trimmedTitle, content]
+      [userId, trimmedTitle, content]
     );
 
     res.status(201).json({
@@ -136,16 +137,10 @@ postRouter.post("/", requireAuth, async (req, res) => {
   }
 });
 
-// Обновление публикации
-postRouter.put("/:id", async (req, res) => {
+// Обновление публикации: автор или ADMIN
+postRouter.put("/:id", requireAuth, async (req, res) => {
   try {
-    const user = req.session.user;
-
-    if (!user?.id) {
-      return res.status(401).json({
-        message: "unauthorized"
-      });
-    }
+    const user = req.session.user!;
 
     const postId = parsePositiveInt(req.params.id);
 
@@ -180,8 +175,9 @@ postRouter.put("/:id", async (req, res) => {
     const [result]: any = await pool.execute(
       `UPDATE posts
        SET title = ?, content = ?
-       WHERE id = ? AND user_id = ?`,
-      [trimmedTitle, content, postId, user.id]
+       WHERE id = ?
+       AND (user_id = ? OR ? = 'ADMIN')`,
+      [trimmedTitle, content, postId, user.id, user.role]
     );
 
     if (result.affectedRows === 0) {
@@ -199,16 +195,10 @@ postRouter.put("/:id", async (req, res) => {
   }
 });
 
-// Удаление публикации
-postRouter.delete("/:id", async (req, res) => {
+// Удаление публикации: автор или ADMIN
+postRouter.delete("/:id", requireAuth, async (req, res) => {
   try {
-    const user = req.session.user;
-
-    if (!user?.id) {
-      return res.status(401).json({
-        message: "unauthorized"
-      });
-    }
+    const user = req.session.user!;
 
     const postId = parsePositiveInt(req.params.id);
 
@@ -220,8 +210,9 @@ postRouter.delete("/:id", async (req, res) => {
 
     const [result]: any = await pool.execute(
       `DELETE FROM posts
-       WHERE id = ? AND user_id = ?`,
-      [postId, user.id]
+       WHERE id = ?
+       AND (user_id = ? OR ? = 'ADMIN')`,
+      [postId, user.id, user.role]
     );
 
     if (result.affectedRows === 0) {
