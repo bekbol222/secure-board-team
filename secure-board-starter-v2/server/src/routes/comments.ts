@@ -1,6 +1,7 @@
 
 import { Router } from "express";
 import { pool } from "../db/pool.js";
+import { requireAuth } from "../middleware/requireAuth.js";
 
 export const commentRouter = Router({ mergeParams: true });
 
@@ -24,13 +25,10 @@ function parsePositiveInt(value: unknown): number | null {
 commentRouter.get("/", async (req, res) => {
   try {
     const { postId } = req.params as Record<string, string>;
-
     const parsedPostId = parsePositiveInt(postId);
 
     if (!parsedPostId) {
-      return res.status(400).json({
-        message: "invalid post id"
-      });
+      return res.status(400).json({ message: "invalid post id" });
     }
 
     const [rows] = await pool.execute(
@@ -46,40 +44,31 @@ commentRouter.get("/", async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-
-    res.status(500).json({
-      message: "server error"
-    });
+    res.status(500).json({ message: "server error" });
   }
 });
 
 // Создание комментария
-commentRouter.post("/", async (req, res) => {
+commentRouter.post("/", requireAuth, async (req, res) => {
   try {
     const { postId } = req.params as Record<string, string>;
-
     const parsedPostId = parsePositiveInt(postId);
 
     if (!parsedPostId) {
-      return res.status(400).json({
-        message: "invalid post id"
-      });
+      return res.status(400).json({ message: "invalid post id" });
     }
 
-    const user = req.session.user as any;
+    const user = req.session.user!;
+    const userId = parsePositiveInt(user.id);
 
-    if (!user?.id) {
-      return res.status(401).json({
-        message: "unauthorized"
-      });
+    if (!userId) {
+      return res.status(400).json({ message: "invalid user id" });
     }
 
     const { content } = req.body;
 
     if (typeof content !== "string") {
-      return res.status(400).json({
-        message: "content must be a string"
-      });
+      return res.status(400).json({ message: "content must be a string" });
     }
 
     if (content.trim().length < 1 || content.length > 500) {
@@ -88,24 +77,13 @@ commentRouter.post("/", async (req, res) => {
       });
     }
 
-    const userId = parsePositiveInt(user.id);
-
-    if (!userId) {
-      return res.status(400).json({
-        message: "invalid user id"
-      });
-    }
-
-    // Проверяем существование публикации
     const [posts]: any = await pool.execute(
       `SELECT id FROM posts WHERE id = ?`,
       [parsedPostId]
     );
 
     if (posts.length === 0) {
-      return res.status(404).json({
-        message: "post not found"
-      });
+      return res.status(404).json({ message: "post not found" });
     }
 
     const [result]: any = await pool.execute(
@@ -120,15 +98,12 @@ commentRouter.post("/", async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-
-    res.status(500).json({
-      message: "server error"
-    });
+    res.status(500).json({ message: "server error" });
   }
 });
 
-// Удаление комментария
-commentRouter.delete("/:commentId", async (req, res) => {
+// Удаление комментария: автор комментария или ADMIN
+commentRouter.delete("/:commentId", requireAuth, async (req, res) => {
   try {
     const { postId, commentId } = req.params as Record<string, string>;
 
@@ -136,47 +111,44 @@ commentRouter.delete("/:commentId", async (req, res) => {
     const parsedCommentId = parsePositiveInt(commentId);
 
     if (!parsedPostId || !parsedCommentId) {
-      return res.status(400).json({
-        message: "invalid id"
-      });
+      return res.status(400).json({ message: "invalid id" });
     }
 
-    const user = req.session.user as any;
-
-    if (!user?.id) {
-      return res.status(401).json({
-        message: "unauthorized"
-      });
-    }
-
+    const user = req.session.user!;
     const userId = parsePositiveInt(user.id);
 
     if (!userId) {
-      return res.status(400).json({
-        message: "invalid user id"
-      });
+      return res.status(400).json({ message: "invalid user id" });
     }
 
-    const [result]: any = await pool.execute(
-      `DELETE FROM comments
-       WHERE id = ? AND post_id = ? AND user_id = ?`,
-      [parsedCommentId, parsedPostId, userId]
+    // Проверяем существование комментария
+    const [comments]: any = await pool.execute(
+      `SELECT id, user_id
+       FROM comments
+       WHERE id = ? AND post_id = ?`,
+      [parsedCommentId, parsedPostId]
     );
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        message: "comment not found or access denied"
-      });
+    if (comments.length === 0) {
+      return res.status(404).json({ message: "comment not found" });
     }
 
-    res.json({
-      message: "deleted"
-    });
+    const comment = comments[0];
+
+    // Разрешаем удаление автору комментария или ADMIN
+    if (comment.user_id !== userId && user.role !== "ADMIN") {
+      return res.status(403).json({ message: "forbidden" });
+    }
+
+    await pool.execute(
+      `DELETE FROM comments
+       WHERE id = ? AND post_id = ?`,
+      [parsedCommentId, parsedPostId]
+    );
+
+    res.json({ message: "deleted" });
   } catch (error) {
     console.error(error);
-
-    res.status(500).json({
-      message: "server error"
-    });
+    res.status(500).json({ message: "server error" });
   }
 });
