@@ -1,4 +1,3 @@
-
 import { Router } from "express";
 import { pool } from "../db/pool.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
@@ -21,11 +20,11 @@ function parsePositiveInt(value: unknown): number | null {
   return Number.isSafeInteger(num) && num > 0 ? num : null;
 }
 
-// ADMIN only: get users
-adminRouter.get("/users", requireAdmin, async (req, res) => {
+// ADMIN only: get users (R12-5: exclude password_hash)
+adminRouter.get("/users", requireAdmin, async (_req, res) => {
   try {
     const [rows] = await pool.execute(
-      "SELECT id, email, name, role, password_hash FROM users"
+      "SELECT id, email, name, role FROM users"
     );
 
     res.json(rows);
