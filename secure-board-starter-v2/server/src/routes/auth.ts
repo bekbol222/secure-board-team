@@ -1,12 +1,12 @@
 import { Router, type Request } from "express";
 import bcrypt from "bcrypt";
 import { pool } from "../db/pool.js";
+import { getOrCreateCsrfToken } from "../middleware/csrf.js";
 
 export const authRouter = Router();
 
 const BCRYPT_ROUNDS = 12;
 
-// Простая in-memory rate limiter для защиты от перебора паролей (R11-5)
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
 const WINDOW_MS = 15 * 60 * 1000;
@@ -53,7 +53,6 @@ function isValidEmail(email: string): boolean {
 }
 
 function isStrongPassword(password: string): boolean {
-  // Минимум 8 символов, максимум 72, хотя бы одна буква и одна цифра
   return (
     password.length >= 8 &&
     password.length <= 72 &&
@@ -61,6 +60,17 @@ function isStrongPassword(password: string): boolean {
     /\d/.test(password)
   );
 }
+
+// R13-5: Issue CSRF token bound to server session
+authRouter.get("/csrf", (req, res) => {
+  const csrfToken = getOrCreateCsrfToken(req);
+  req.session.save((err) => {
+    if (err) {
+      return res.status(500).json({ message: "session error" });
+    }
+    res.json({ csrfToken });
+  });
+});
 
 authRouter.post("/register", async (req, res) => {
   const { email, password, name } = req.body;
@@ -166,6 +176,7 @@ authRouter.post("/login", async (req, res) => {
     }
 
     req.session.user = safeUser;
+    getOrCreateCsrfToken(req);
 
     req.session.save((saveErr) => {
       if (saveErr) {
@@ -200,7 +211,7 @@ authRouter.post("/logout", (req, res) => {
       return res.status(500).json({ message: "logout failed" });
     }
 
-    res.clearCookie("connect.sid");
+    res.clearCookie("connect.sid", { path: "/" });
     res.json({ message: "logout" });
   });
 });
