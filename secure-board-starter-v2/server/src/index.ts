@@ -20,16 +20,19 @@ app.use((req, _res, next) => {
   next();
 });
 
-app.use(session({
-  secret: process.env.SESSION_SECRET ?? "class-secret-2026",
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production"
-  }
-}));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET ?? "class-secret-2026",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 1000
+    }
+  })
+);
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, env: process.env.NODE_ENV, node: process.version });
