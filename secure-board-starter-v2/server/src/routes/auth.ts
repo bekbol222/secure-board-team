@@ -6,7 +6,7 @@ export const authRouter = Router();
 
 const BCRYPT_ROUNDS = 12;
 
-// Простой in-memory rate limiter для защиты от перебора паролей (R11-5)
+// Простая in-memory rate limiter для защиты от перебора паролей (R11-5)
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
 const WINDOW_MS = 15 * 60 * 1000;
@@ -19,19 +19,26 @@ function getAttemptKey(req: Request, email: string): string {
 function isRateLimited(key: string): boolean {
   const now = Date.now();
   const entry = loginAttempts.get(key);
+
   if (!entry) return false;
+
   if (now > entry.resetAt) {
     loginAttempts.delete(key);
     return false;
   }
+
   return entry.count >= MAX_LOGIN_ATTEMPTS;
 }
 
 function recordFailedAttempt(key: string): void {
   const now = Date.now();
   const entry = loginAttempts.get(key);
+
   if (!entry || now > entry.resetAt) {
-    loginAttempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
+    loginAttempts.set(key, {
+      count: 1,
+      resetAt: now + WINDOW_MS
+    });
   } else {
     entry.count += 1;
   }
@@ -46,7 +53,7 @@ function isValidEmail(email: string): boolean {
 }
 
 function isStrongPassword(password: string): boolean {
-  // Минимум 8 символов, максимум 72 (ограничение bcrypt), хотя бы одна буква и одна цифра
+  // Минимум 8 символов, максимум 72, хотя бы одна буква и одна цифра
   return (
     password.length >= 8 &&
     password.length <= 72 &&
@@ -58,8 +65,14 @@ function isStrongPassword(password: string): boolean {
 authRouter.post("/register", async (req, res) => {
   const { email, password, name } = req.body;
 
-  if (typeof email !== "string" || typeof password !== "string" || typeof name !== "string") {
-    return res.status(400).json({ message: "email, password, and name must be strings" });
+  if (
+    typeof email !== "string" ||
+    typeof password !== "string" ||
+    typeof name !== "string"
+  ) {
+    return res.status(400).json({
+      message: "email, password, and name must be strings"
+    });
   }
 
   const trimmedEmail = email.trim().toLowerCase();
@@ -76,13 +89,16 @@ authRouter.post("/register", async (req, res) => {
   }
 
   if (trimmedName.length < 1 || trimmedName.length > 30) {
-    return res.status(400).json({ message: "name must be between 1 and 30 characters" });
+    return res.status(400).json({
+      message: "name must be between 1 and 30 characters"
+    });
   }
 
   const [existing]: any = await pool.execute(
     `SELECT id FROM users WHERE email = ?`,
     [trimmedEmail]
   );
+
   if (existing.length > 0) {
     return res.status(409).json({ message: "email already registered" });
   }
@@ -101,14 +117,18 @@ authRouter.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
   if (typeof email !== "string" || typeof password !== "string") {
-    return res.status(400).json({ message: "email and password must be strings" });
+    return res.status(400).json({
+      message: "email and password must be strings"
+    });
   }
 
   const normalizedEmail = email.trim().toLowerCase();
   const attemptKey = getAttemptKey(req, normalizedEmail);
 
   if (isRateLimited(attemptKey)) {
-    return res.status(429).json({ message: "too many login attempts, try again later" });
+    return res.status(429).json({
+      message: "too many login attempts, try again later"
+    });
   }
 
   const [rows]: any = await pool.execute(
@@ -116,15 +136,18 @@ authRouter.post("/login", async (req, res) => {
     [normalizedEmail]
   );
 
-  // Фиктивный bcrypt-хеш для защиты от timing attack, если пользователь не найден
-  const dummyHash = "$2b$12$C6UzMDM.H6dfI/f/IKcEeO6H4rB1yS8F2N7H2Z8y7f6G5H4J3K2L.";
+  const dummyHash =
+    "$2b$12$C6UzMDM.H6dfI/f/IKcEeO6H4rB1yS8F2N7H2Z8y7f6G5H4J3K2L.";
+
   const userRow = rows[0];
   const hashToCheck = userRow ? userRow.password_hash : dummyHash;
   const passwordValid = await bcrypt.compare(password, hashToCheck);
 
   if (!userRow || !passwordValid) {
     recordFailedAttempt(attemptKey);
-    return res.status(401).json({ message: "invalid email or password" });
+    return res.status(401).json({
+      message: "invalid email or password"
+    });
   }
 
   clearAttempts(attemptKey);
@@ -136,24 +159,47 @@ authRouter.post("/login", async (req, res) => {
     role: userRow.role
   };
 
+  // R13-1: regenerate session ID after successful login
   req.session.regenerate((err) => {
     if (err) {
       return res.status(500).json({ message: "session error" });
     }
+
     req.session.user = safeUser;
-    res.json(safeUser);
+
+    req.session.save((saveErr) => {
+      if (saveErr) {
+        return res.status(500).json({ message: "session error" });
+      }
+
+      res.json(safeUser);
+    });
   });
 });
 
+// R13-4: Return only safe user information from server-side session
 authRouter.get("/me", (req, res) => {
   if (!req.session.user) {
     return res.status(401).json({ message: "not logged in" });
   }
-  res.json(req.session.user);
+
+  const { id, email, name, role } = req.session.user;
+
+  res.json({
+    id,
+    email,
+    name,
+    role
+  });
 });
 
+// R13-2: Destroy session during logout
 authRouter.post("/logout", (req, res) => {
-  req.session.destroy(() => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ message: "logout failed" });
+    }
+
     res.clearCookie("connect.sid");
     res.json({ message: "logout" });
   });
