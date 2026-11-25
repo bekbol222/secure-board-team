@@ -177,12 +177,20 @@ authRouter.post("/login", async (req, res) => {
   });
 });
 
+// R13-4: Return only safe user information from server-side session
 authRouter.get("/me", (req, res) => {
   if (!req.session.user) {
     return res.status(401).json({ message: "not logged in" });
   }
 
-  res.json(req.session.user);
+  const { id, email, name, role } = req.session.user;
+
+  res.json({
+    id,
+    email,
+    name,
+    role
+  });
 });
 
 // R13-2: Destroy session during logout
