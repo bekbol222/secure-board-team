@@ -136,7 +136,6 @@ authRouter.post("/login", async (req, res) => {
     [normalizedEmail]
   );
 
-  
   const dummyHash =
     "$2b$12$C6UzMDM.H6dfI/f/IKcEeO6H4rB1yS8F2N7H2Z8y7f6G5H4J3K2L.";
 
@@ -166,10 +165,8 @@ authRouter.post("/login", async (req, res) => {
       return res.status(500).json({ message: "session error" });
     }
 
-    // Store authenticated user in the new session
     req.session.user = safeUser;
 
-    // Save the new session before sending the response
     req.session.save((saveErr) => {
       if (saveErr) {
         return res.status(500).json({ message: "session error" });
@@ -188,8 +185,13 @@ authRouter.get("/me", (req, res) => {
   res.json(req.session.user);
 });
 
+// R13-2: Destroy session during logout
 authRouter.post("/logout", (req, res) => {
-  req.session.destroy(() => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ message: "logout failed" });
+    }
+
     res.clearCookie("connect.sid");
     res.json({ message: "logout" });
   });
